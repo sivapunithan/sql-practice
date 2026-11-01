@@ -17,7 +17,7 @@ After each exercise, add a row to its **Log** table: date, time spent, status (`
 ---
 
 ## Day 1 — Joins (all types, row-count effects)
-**Status:** not started
+**Status:** done (2026-11-01)
 
 ### 1.1 Inner vs Left join row count
 **Tables:** `film`, `inventory`
@@ -34,6 +34,7 @@ LEFT keeps all of `a`; unmatched `b` columns come back NULL. Films with no inven
 **Log:**
 | Date | Time | Status | Note |
 |---|---|---|---|
+| 2026-11-01 | | done | INNER=4581, LEFT=4623, 42 unstocked films isolated via `i.film_id IS NULL`. Verified count. |
 | | | | |
 
 ### 1.2 Join chain (1:1 / many:1)
@@ -45,6 +46,7 @@ LEFT keeps all of `a`; unmatched `b` columns come back NULL. Films with no inven
 **Log:**
 | Date | Time | Status | Note |
 |---|---|---|---|
+| 2026-11-01 | | done | 4-table chain customer→address→city→country, 999 rows = exact customer count. |
 
 ### 1.3 Many-to-many via bridge table
 **Tables:** `film`, `film_actor`, `actor`
@@ -55,6 +57,7 @@ LEFT keeps all of `a`; unmatched `b` columns come back NULL. Films with no inven
 **Log:**
 | Date | Time | Status | Note |
 |---|---|---|---|
+| 2026-11-01 | | done | 5462 rows = film_actor's own row count, not film or actor count. |
 
 ---
 
