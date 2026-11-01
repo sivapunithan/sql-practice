@@ -79,6 +79,7 @@ SELECT a.* FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.key = a.key);
 **Log:**
 | Date | Time | Status | Note |
 |---|---|---|---|
+| 2026-11-01 | | done | Both LEFT JOIN and NOT EXISTS gave 2 customers with zero rentals. Confirmed equivalent. |
 
 ### 2.2 Anti-join: unstocked films
 **Tables:** `film`, `inventory`
@@ -323,6 +324,73 @@ FROM t;
 
 ---
 
+## Day 7.5 — Oracle fundamentals & gotchas
+**Status:** not started
+Added after a market-research + plan-audit pass (2026-11-01) — these came up repeatedly in real Informatica/Oracle ETL interview reports and weren't covered anywhere else in the plan.
+
+### 7.5.1 Conditional aggregation (CASE WHEN inside aggregates)
+**Table:** `payment`, `customer`
+**Problem:** Pivot-style summary — e.g. count of payments in three amount bands (low/mid/high) as separate columns in one row, using `SUM(CASE WHEN ... THEN 1 ELSE 0 END)`.
+**Pattern:**
+```sql
+SELECT
+  SUM(CASE WHEN amount < 3 THEN 1 ELSE 0 END) AS low_band,
+  SUM(CASE WHEN amount BETWEEN 3 AND 6 THEN 1 ELSE 0 END) AS mid_band,
+  SUM(CASE WHEN amount > 6 THEN 1 ELSE 0 END) AS high_band
+FROM payment;
+```
+**Check:** the three band counts should sum to the table's total row count.
+**Log:**
+| Date | Time | Status | Note |
+|---|---|---|---|
+
+### 7.5.2 NULL handling: NVL/COALESCE, DECODE vs CASE
+**Table:** `customer` or `address` (pick a nullable column, e.g. `address2`)
+**Problem:** Write a query substituting a default value for NULLs in a nullable column, once using `COALESCE`, once reasoning through Oracle's `NVL`.
+**Concept, not just syntax:** `COALESCE` is ANSI SQL, accepts any number of arguments, returns the first non-NULL. Oracle's `NVL(expr, default)` only takes two arguments and **requires matching datatypes** between them (a common Oracle error: `NVL(numeric_col, 'text')` fails; `TO_CHAR` wrap is often needed). `DECODE(expr, val1, result1, val2, result2, default)` is Oracle-only, pre-dates `CASE`, and only matches discrete values (not ranges/conditions) — `CASE` is ANSI, handles ranges (`CASE WHEN x > 5 THEN ...`), and works everywhere `DECODE` does plus more.
+**Check:** no specific row-count check — this is a syntax/semantics exercise, confirm your query runs and returns sensible substituted values.
+**Log:**
+| Date | Time | Status | Note |
+|---|---|---|---|
+
+### 7.5.3 Oracle ROWNUM top-N pattern
+**Table:** `film`
+**Problem (concept, Postgres doesn't have ROWNUM):** In Postgres you'd use `LIMIT`. In Oracle, top-N is done with `ROWNUM`, but there's a trap: `WHERE ROWNUM <= 5 ORDER BY rental_rate DESC` does NOT give you the top 5 by rental_rate — `ROWNUM` is assigned *before* the `ORDER BY` takes effect in the outer query. Correct Oracle pattern requires a subquery:
+```sql
+SELECT * FROM (
+  SELECT * FROM film ORDER BY rental_rate DESC
+) WHERE ROWNUM <= 5;
+```
+**Exercise:** write the Postgres `LIMIT` version against `film` ordered by `rental_rate DESC`, and separately write out (as a comment, since Postgres won't run it) the Oracle `ROWNUM` subquery version — to make sure you have the trap memorized, not just the simple case.
+**Check:** your Postgres top-5 should match what you'd expect from eyeballing `rental_rate` max values.
+**Log:**
+| Date | Time | Status | Note |
+|---|---|---|---|
+
+### 7.5.4 Set operator: Oracle MINUS (Postgres EXCEPT)
+**Tables:** any two comparable row sets, e.g. `customer_id` values in `rental` vs `payment`
+**Problem:** Find customer_ids present in `rental` but not in `payment` using a set operator instead of an anti-join.
+**Pattern (Postgres):**
+```sql
+SELECT customer_id FROM rental
+EXCEPT
+SELECT customer_id FROM payment;
+```
+**Oracle note:** Oracle calls this `MINUS`, not `EXCEPT` — syntax is otherwise identical. This is a one-line gotcha interviewers like to drop into a question to see if you freeze.
+**Check:** compare this result against an anti-join version of the same question — should match exactly (same logic, different mechanism, like your Day 2 NOT EXISTS vs LEFT JOIN comparison).
+**Log:**
+| Date | Time | Status | Note |
+|---|---|---|---|
+
+### 7.5.5 EXISTS vs IN — general semantics (not just the NULL trap)
+**Problem (concept):** Explain in your own words, out loud, as if answering the interviewer: when would you choose `IN` over `EXISTS`, and vice versa? Key points to hit: `IN` materializes the subquery's full result list first; `EXISTS` can short-circuit on the first match and is generally preferred for large/correlated subqueries. `IN` reads cleaner for small static lists. Both can be correct — the interview is testing whether you understand the tradeoff, not that one is "always right."
+**No query needed** — this is a verbal/written explanation exercise. Write your answer as a comment in a `.sql` file so it's tracked.
+**Log:**
+| Date | Time | Status | Note |
+|---|---|---|---|
+
+---
+
 ## Day 8 — MERGE-style upserts
 **Status:** not started
 
@@ -345,9 +413,10 @@ DO UPDATE SET col1 = EXCLUDED.col1, col2 = EXCLUDED.col2;
 ```sql
 MERGE INTO target t
 USING source s ON (t.key_col = s.key_col)
-WHEN MATCHED THEN UPDATE SET t.col1 = s.col1
-WHEN NOT MATCHED THEN INSERT (key_col, col1) VALUES (s.key_col, s.col1);
+WHEN MATCHED THEN UPDATE SET t.col1 = s.col1, t.col2 = s.col2
+WHEN NOT MATCHED THEN INSERT (key_col, col1, col2) VALUES (s.key_col, s.col1, s.col2);
 ```
+**Gotcha to know:** Oracle's MERGE cannot update the column(s) used in the `ON` join condition — if you try, you get `ORA-38104`. This is a real interview trap question ("what happens if your UPDATE SET includes the join key?").
 **Check:** target row count after upsert = original target rows + genuinely new rows (updates shouldn't add rows).
 **Informatica mapping:** Update Strategy transformation (flags rows DD_INSERT/DD_UPDATE/DD_DELETE) combined with a Lookup to check existence — this is literally how Informatica implements upserts.
 **Log:**
@@ -375,7 +444,7 @@ INSERT INTO dim (natural_key, tracked_col1, effective_date, end_date, is_current
 VALUES (:id, :new_val1, CURRENT_DATE, NULL, true);
 ```
 Use `IS DISTINCT FROM` to detect change — handles NULLs correctly, unlike `!=`.
-**Oracle note:** `IS DISTINCT FROM` doesn't exist pre-23c. Workaround: `DECODE(a, b, 0, 1) = 1` or `NVL(a,'~') != NVL(b,'~')`.
+**Oracle note:** `IS DISTINCT FROM` doesn't exist pre-23c. Workaround: `DECODE(a, b, 0, 1) = 1` — prefer this. Avoid the `NVL(a,'~') != NVL(b,'~')` sentinel trick: it silently breaks if a real value happens to equal the sentinel `'~'`.
 **Check:** for any `customer_id`, exactly one row with `is_current = true`; no gaps/overlaps between `effective_date`/`end_date` across versions.
 **Informatica mapping:** the classic SCD Type 2 mapping template — Lookup (find existing current row) → Expression (compare source vs lookup to detect change) → Router (new vs changed vs unchanged) → Update Strategy (expire old row) + separate insert path (new row, new surrogate key).
 **Log:**
