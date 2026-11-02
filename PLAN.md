@@ -62,7 +62,7 @@ LEFT keeps all of `a`; unmatched `b` columns come back NULL. Films with no inven
 ---
 
 ## Day 2 — Anti-joins & duplicates
-**Status:** not started
+**Status:** done (2026-11-02)
 
 ### 2.1 Anti-join: customers with zero rentals
 **Tables:** `customer`, `rental`
@@ -89,6 +89,7 @@ SELECT a.* FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.key = a.key);
 **Log:**
 | Date | Time | Status | Note |
 |---|---|---|---|
+| 2026-11-01 | | done | NOT EXISTS version, 42 rows, matches Day 1.1's diff exactly. |
 
 ### 2.3 Find duplicate customers
 **Table:** `customer`
@@ -105,6 +106,7 @@ HAVING COUNT(*) > 1;
 **Log:**
 | Date | Time | Status | Note |
 |---|---|---|---|
+| 2026-11-02 | | done | (first_name,last_name) GROUP BY/HAVING found 16 duplicate pairs (2 with count=3). Email GROUP BY found 0 duplicates. Concluded name dupes are coincidental, not real duplicate accounts, since email (likely unique) shows none. |
 
 ---
 
